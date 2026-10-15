@@ -1,0 +1,13 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Builds (PyInstaller)
+build/
+dist/
+*.spec
+
+# OS
+.DS_Store
+Thumbs.db

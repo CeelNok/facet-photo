@@ -1,0 +1,8 @@
+# Keep the signed macOS launcher byte-for-byte identical (its signature covers these files)
+Facet.app/** -text
+*.icns binary
+*.ico binary
+*.onnx binary
+*.png binary
+# Windows batch files work best with CRLF line endings
+*.bat text eol=crlf

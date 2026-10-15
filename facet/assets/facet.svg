@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7C3AED"/>
+      <stop offset="0.55" stop-color="#4F46E5"/>
+      <stop offset="1" stop-color="#06B6D4"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.28" cy="0.2" r="0.75">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="208" fill="url(#glow)"/>
+  <g fill="none" stroke="#FFFFFF" stroke-opacity="0.92" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M232 372 V300 Q232 232 300 232 H372"/>
+    <path d="M652 232 H724 Q792 232 792 300 V372"/>
+    <path d="M792 652 V724 Q792 792 724 792 H652"/>
+    <path d="M372 792 H300 Q232 792 232 724 V652"/>
+  </g>
+  <g fill="#FFFFFF">
+    <polygon points="512,512 512,330 669.6,421" fill-opacity="1"/>
+    <polygon points="512,512 669.6,421 669.6,603" fill-opacity="0.74"/>
+    <polygon points="512,512 669.6,603 512,694" fill-opacity="0.52"/>
+    <polygon points="512,512 512,694 354.4,603" fill-opacity="0.38"/>
+    <polygon points="512,512 354.4,603 354.4,421" fill-opacity="0.6"/>
+    <polygon points="512,512 354.4,421 512,330" fill-opacity="0.86"/>
+  </g>
+</svg>

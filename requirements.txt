@@ -1,0 +1,5 @@
+PySide6-Essentials>=6.7
+Pillow>=10.1
+rawpy>=0.21
+pillow-heif>=0.16
+opencv-python-headless>=4.8

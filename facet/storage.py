@@ -59,13 +59,20 @@ DEFAULTS = {
     "recursive": False,
     "last_folder": "",
     "language": "",  # "" = follow the operating system
-    "auto_faces": True,  # detect faces locally in the background
+    "auto_faces": False,  # detect faces automatically when a folder opens (opt-in)
+    "provider": "jev",  # AI used for labels: "jev" | "openai"
+    "openai_model": "gpt-5.4-mini",
 }
+
+KEY_FILES = {"jev": "api_key", "openai": "openai_api_key"}
 
 
 class Settings:
     def __init__(self) -> None:
         self._q = QSettings()
+        if not self._q.contains("faces_optin_v1"):  # 0.5: face scanning became opt-in
+            self._q.setValue("auto_faces", False)
+            self._q.setValue("faces_optin_v1", True)
 
     def get(self, key: str):
         default = DEFAULTS.get(key)
@@ -84,18 +91,19 @@ class Settings:
 
     # The API key is kept in a private file in the app's data folder (readable only by the current user).
     # The OS keychain is deliberately not used: it shows password prompts for unsigned / rebuilt apps.
-    def _key_file(self) -> Path:
-        return data_dir() / "api_key"
+    def _key_file(self, provider: str = "jev") -> Path:
+        return data_dir() / KEY_FILES.get(provider, "api_key")
 
-    def api_key(self) -> str:
+    def api_key(self, provider: str | None = None) -> str:
+        provider = provider or self.get("provider") or "jev"
         try:
-            return self._key_file().read_text("utf-8").strip()
+            return self._key_file(provider).read_text("utf-8").strip()
         except OSError:
-            return str(self._q.value("api_key_fallback", "") or "")
+            return str(self._q.value("api_key_fallback", "") or "") if provider == "jev" else ""
 
-    def set_api_key(self, value: str) -> None:
+    def set_api_key(self, value: str, provider: str = "jev") -> None:
         value = value.strip()
-        f = self._key_file()
+        f = self._key_file(provider)
         if not value:
             f.unlink(missing_ok=True)
         else:

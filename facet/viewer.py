@@ -243,7 +243,7 @@ class ViewerWindow(QWidget):
         self.reset_btn = QPushButton(tr("Back to the AI's decision"))
         self.reset_btn.setToolTip(tr("Clear manual changes on this photo"))
         self.reset_btn.clicked.connect(self._reset_manual)
-        self.analyze_btn = QPushButton(tr("Analyze with Jev (this photo)"))
+        self.analyze_btn = QPushButton(tr("Analyse with AI (this photo)"))
         self.analyze_btn.clicked.connect(lambda: self.host.analyze_photos([self.current], force=True))
         self.raw_btn = QPushButton(tr("Develop RAW at full quality"))
         self.raw_btn.clicked.connect(self._load_raw_full)

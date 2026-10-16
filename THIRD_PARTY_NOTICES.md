@@ -16,3 +16,7 @@ Facet uses the following components. Each one keeps its own licence.
 **TypeSafe Jev** is an online service used through its public API
 (<https://docs.typesafe.ai>). Photos are sent to it only when you start an analysis. Its use is governed by
 TypeSafe's terms.
+
+**OpenAI** (optional) is an online service used through its public API (<https://developers.openai.com>). Photos
+are sent to it only when you choose OpenAI and start an analysis; requests are made with `store: false`. Its use is
+governed by OpenAI's terms.

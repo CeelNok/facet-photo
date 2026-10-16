@@ -11,12 +11,13 @@ from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QCheckBox, QColorDialog, QComboBox, QDialog, QDialogButtonBox,
     QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListView, QListWidget,
-    QListWidgetItem, QMessageBox, QPushButton, QRadioButton, QSlider, QSpinBox, QTableWidget, QTableWidgetItem,
+    QFrame, QListWidgetItem, QMessageBox, QPushButton, QRadioButton, QScrollArea, QSlider, QSpinBox, QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 
 from facet.i18n import LANGUAGES, language, tr
-from facet.jev_client import JevClient, JevError
+from facet.ai import DEFAULT_MODELS, KEY_URLS, PROVIDERS, AIError, make_client
 from facet.storage import MAX_REF_FACES, PALETTE, Label, Settings, faces_dir
 
 
@@ -39,16 +40,18 @@ class LabelsDialog(QDialog):
         self.labels = deepcopy(labels)
 
         info = QLabel(tr(
-            "Every label is a yes/no question for Jev. Refer to the image as <code>`photo`</code>. "
-            "Jev returns a 0–100% probability; the label is applied when it reaches the threshold. "
-            "Thresholds can be changed later without re-analysing. Labels 1–9 can also be toggled "
-            "with the number keys. People (👤) are created by marking a face in the viewer."
+            "Every label is a yes/no question for the AI. Refer to the image as "
+            "<code>`photo`</code>. The AI returns a 0–100% probability; the label is applied when it "
+            "reaches the threshold. Thresholds can be changed later without re-analysing. Labels 1–9 "
+            "can also be toggled with the number keys. People (👤) are created by marking a face in "
+            "the viewer."
         ))
         info.setWordWrap(True)
         info.setTextFormat(Qt.TextFormat.RichText)
 
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels([tr("Name"), tr("Question for Jev (English works best)"),
+        self.table.setHorizontalHeaderLabels([tr("Name"), tr("Question for the AI (English works "
+                                                             "best)"),
                                               tr("Threshold %"), tr("Color")])
         h = self.table.horizontalHeader()
         h.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
@@ -233,7 +236,7 @@ class LabelEditDialog(QDialog):
             note.setObjectName("muted")
             form.addRow("", note)
         elif not person:
-            form.addRow(tr("Question for Jev:"), self.question)
+            form.addRow(tr("Question for the AI:"), self.question)
             form.addRow("", self.tip)
         form.addRow(tr("Threshold:"), thr_row)
         form.addRow("", self.preview)
@@ -254,16 +257,17 @@ class LabelEditDialog(QDialog):
                 self.faces.addItem(it)
             rm = QPushButton(tr("Remove selected faces"))
             rm.clicked.connect(self._remove_faces)
-            lay.addWidget(QLabel(tr("<b>Reference faces</b> – the newest {n} are sent to Jev. Add more by marking "
-                                    "this person's face on other photos (different angles help).",
+            lay.addWidget(QLabel(tr("<b>Reference faces</b> – the newest {n} are sent to the AI. Add "
+                                    "more by marking this person's face on other photos (different "
+                                    "angles help).",
                                     n=MAX_REF_FACES)))
             lay.addWidget(self.faces)
             lay.addWidget(rm)
             hint = tr("Changing the reference faces re-checks this person on the next analysis.")
         else:
-            hint = tr("Jev answers this yes/no question for every photo. English questions are the most accurate; "
-                      "refer to the image as <code>`photo`</code>. For a new label only this one question is sent "
-                      "for photos that were already analysed.")
+            hint = tr("The AI answers this yes/no question for every photo. English questions are "
+                      "the most accurate; refer to the image as <code>`photo`</code>. For a new "
+                      "label only this one question is sent for photos that were already analysed.")
         h = QLabel(hint)
         h.setWordWrap(True)
         h.setTextFormat(Qt.TextFormat.RichText)
@@ -349,10 +353,12 @@ class PersonDialog(QDialog):
         self.name.setCurrentIndex(0)
         self.name.setFocus()
         if show_search:  # no local face recognition for this face: Jev is the way to find the person
-            self.search_now = QCheckBox(tr("Find this person in the current view now (uses the Jev API)"))
+            self.search_now = QCheckBox(tr("Find this person in the current view now with AI (uses "
+                                           "the API)"))
             self.search_now.setChecked(True)
         else:  # local recognition already finds frontal faces; Jev can add side views
-            self.search_now = QCheckBox(tr("Also search with Jev AI for side views and small faces (uses the API)"))
+            self.search_now = QCheckBox(tr("Also search with AI for side views and small faces (uses "
+                                           "the API)"))
             self.search_now.setChecked(False)
         hint = QLabel(tr("Pick an existing person to add another reference face (more angles = better results), "
                          "or type a new name."))
@@ -386,28 +392,61 @@ class SettingsDialog(QDialog):
         self.setWindowTitle(tr("Settings"))
         self.settings = settings
         self.thumb_cache_dir = thumb_cache_dir
-        self.setMinimumWidth(540)
-
-        self.key = QLineEdit(settings.api_key())
-        self.key.setEchoMode(QLineEdit.EchoMode.Password)
-        self.key.setPlaceholderText(tr("TypeSafe API key (console.typesafe.ai/keys)"))
-        self.key.setToolTip(tr("Stored in a private file in Facet's data folder – no keychain, no password prompts."))
-        show = QPushButton(tr("Show"))
-        show.setCheckable(True)
-        show.toggled.connect(lambda on: self.key.setEchoMode(
-            QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password))
-        test = QPushButton(tr("Test connection"))
-        test.clicked.connect(self._test)
-        key_row = QHBoxLayout()
-        key_row.addWidget(self.key, 1)
-        key_row.addWidget(show)
+        self.setMinimumWidth(620)
 
         self.lang = QComboBox()
         self.lang.addItem(tr("Automatic (system language)"), "")
         for code, name in LANGUAGES.items():
             self.lang.addItem(name, code)
         self.lang.setCurrentIndex(max(0, self.lang.findData(settings.get("language") or "")))
-        self.model = QLineEdit(settings.get("model"))
+
+        # ---- AI provider
+        self.provider = QComboBox()
+        for code, name in PROVIDERS.items():
+            self.provider.addItem(name, code)
+        self.provider.setCurrentIndex(max(0, self.provider.findData(settings.get("provider") or "jev")))
+        self.provider.currentIndexChanged.connect(self._sync_provider)
+        provider_hint = QLabel(tr(
+            "<b>TypeSafe Jev</b>: calibrated yes/no probabilities; can also look for people by their reference "
+            "faces.<br><b>OpenAI (ChatGPT)</b>: GPT vision models; good general image understanding, but it does "
+            "not compare faces (people are then found by the local face recognition only)."))
+        provider_hint.setWordWrap(True)
+        provider_hint.setTextFormat(Qt.TextFormat.RichText)
+        provider_hint.setObjectName("muted")
+
+        self.keys: dict[str, QLineEdit] = {}
+        self.models: dict[str, QComboBox] = {}
+        self.boxes: dict[str, QGroupBox] = {}
+        for code, name in PROVIDERS.items():
+            box = QGroupBox(name)
+            form = QFormLayout(box)
+            key = QLineEdit(settings.api_key(code))
+            key.setEchoMode(QLineEdit.EchoMode.Password)
+            key.setPlaceholderText(tr("API key ({url})", url=KEY_URLS[code].replace("https://", "")))
+            key.setToolTip(tr("Stored in a private file in Facet's data folder – no keychain, no password prompts."))
+            show = QPushButton(tr("Show"))
+            show.setCheckable(True)
+            show.toggled.connect(lambda on, k=key: k.setEchoMode(
+                QLineEdit.EchoMode.Normal if on else QLineEdit.EchoMode.Password))
+            row = QHBoxLayout()
+            row.addWidget(key, 1)
+            row.addWidget(show)
+            model = QComboBox()
+            model.setEditable(True)
+            choices = ["jev-latest"] if code == "jev" else ["gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.4", "gpt-5.5"]
+            model.addItems(choices)
+            model.setCurrentText(settings.get("model" if code == "jev" else "openai_model") or DEFAULT_MODELS[code])
+            if code == "openai":
+                model.setToolTip(tr("gpt-5.4-mini: good balance of quality and price · gpt-5.4-nano: cheapest · "
+                                    "gpt-5.4 / gpt-5.5: most accurate, more expensive"))
+            test = QPushButton(tr("Test connection"))
+            test.clicked.connect(lambda _c=False, c=code: self._test(c))
+            form.addRow(tr("API key:"), row)
+            form.addRow(tr("Model:"), model)
+            form.addRow("", test)
+            self.keys[code], self.models[code], self.boxes[code] = key, model, box
+
+        # ---- performance
         self.conc = QSpinBox()
         self.conc.setRange(1, 16)
         self.conc.setValue(settings.get("concurrency"))
@@ -419,43 +458,82 @@ class SettingsDialog(QDialog):
         self.threads = QSpinBox()
         self.threads.setRange(1, 8)
         self.threads.setValue(settings.get("thumb_threads"))
-        self.auto_faces = QCheckBox(tr("Find faces automatically when a folder opens (on this computer, free)"))
-        self.auto_faces.setChecked(settings.get("auto_faces"))
-
-        clear = QPushButton(tr("Clear thumbnail cache ({mb} MB)", mb=f"{self._cache_mb():.0f}"))
-        clear.clicked.connect(lambda: self._clear_cache(clear))
-
-        form = QFormLayout()
-        form.addRow(tr("Language:"), self.lang)
-        form.addRow(tr("API key:"), key_row)
-        form.addRow("", test)
-        form.addRow(tr("Model:"), self.model)
-        form.addRow(tr("Parallel AI requests:"), self.conc)
-        form.addRow(tr("Image size sent to AI:"), self.ai_side)
-        form.addRow(tr("Thumbnail threads:"), self.threads)
-        form.addRow(tr("Faces:"), self.auto_faces)
+        perf = QGroupBox(tr("Performance"))
+        pf = QFormLayout(perf)
+        pf.addRow(tr("Parallel AI requests:"), self.conc)
+        pf.addRow(tr("Image size sent to AI:"), self.ai_side)
+        pf.addRow(tr("Thumbnail threads:"), self.threads)
         hint = QLabel(tr("A smaller AI image means fewer tokens and faster uploads; 1024 px is enough for most "
                          "labels. Blur detection and recognising people in group shots are more accurate with "
                          "larger images. Language and thumbnail threads apply after a restart; fewer threads "
                          "use less energy."))
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:gray")
+        hint.setObjectName("muted")
+        pf.addRow(hint)
+
+        # ---- faces
+        faces = QGroupBox(tr("Faces"))
+        ff = QVBoxLayout(faces)
+        self.auto_faces = QCheckBox(tr("Find faces automatically when a folder opens (on this computer, free)"))
+        self.auto_faces.setChecked(settings.get("auto_faces"))
+        warn = QLabel(tr("⚠ Face recognition is not 100% accurate: people can be missed, two people can be mixed "
+                         "up, or one person can be split into several groups. Always check the results."))
+        warn.setWordWrap(True)
+        warn.setStyleSheet("color:#d97706")
+        ff.addWidget(self.auto_faces)
+        ff.addWidget(warn)
+
+        clear = QPushButton(tr("Clear thumbnail cache ({mb} MB)", mb=f"{self._cache_mb():.0f}"))
+        clear.clicked.connect(lambda: self._clear_cache(clear))
+
+        top = QFormLayout()
+        top.addRow(tr("Language:"), self.lang)
+        top.addRow(tr("AI for analysis:"), self.provider)
+        top.addRow("", provider_hint)
 
         bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self._save)
         bb.rejected.connect(self.reject)
 
-        lay = QVBoxLayout(self)
-        lay.addLayout(form)
-        lay.addWidget(hint)
+        body = QWidget()
+        lay = QVBoxLayout(body)
+        lay.addLayout(top)
+        for code in PROVIDERS:
+            lay.addWidget(self.boxes[code])
+        lay.addWidget(perf)
+        lay.addWidget(faces)
         lay.addWidget(clear)
-        lay.addWidget(bb)
+        scroll = QScrollArea()
+        scroll.setWidget(body)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        outer = QVBoxLayout(self)
+        outer.addWidget(scroll, 1)
+        outer.addWidget(bb)
+        self.resize(660, 760)
+        self._sync_provider()
 
-    def _test(self) -> None:
+    def _sync_provider(self) -> None:
+        current = self.provider.currentData()
+        for code, box in self.boxes.items():
+            box.setTitle(PROVIDERS[code] + ("  ✓ " + tr("in use") if code == current else ""))
+
+    def _test(self, code: str) -> None:
+        class _Tmp:  # settings view with the values typed in the dialog
+            def __init__(s, d):
+                s.d = d
+
+            def get(s, k):
+                return {"provider": code, "model": self.models["jev"].currentText().strip(),
+                        "openai_model": self.models["openai"].currentText().strip()}.get(k)
+
+            def api_key(s, p=None):
+                return self.keys[p or code].text().strip()
+
         try:
-            model = JevClient(self.key.text().strip(), self.model.text().strip()).test()
+            model = make_client(_Tmp(self), code).test()
             QMessageBox.information(self, tr("Connection"), tr("Connected. Model: {m}", m=model))
-        except JevError as e:
+        except AIError as e:
             QMessageBox.warning(self, tr("Connection"), tr("Error: {e}", e=e))
 
     def _cache_mb(self) -> float:
@@ -476,9 +554,12 @@ class SettingsDialog(QDialog):
 
     def _save(self) -> None:
         old_lang = self.settings.get("language") or ""
-        self.settings.set_api_key(self.key.text())
+        for code, key in self.keys.items():
+            self.settings.set_api_key(key.text(), code)
+        self.settings.set("provider", self.provider.currentData())
         self.settings.set("language", self.lang.currentData())
-        self.settings.set("model", self.model.text().strip() or "jev-latest")
+        self.settings.set("model", self.models["jev"].currentText().strip() or DEFAULT_MODELS["jev"])
+        self.settings.set("openai_model", self.models["openai"].currentText().strip() or DEFAULT_MODELS["openai"])
         self.settings.set("concurrency", self.conc.value())
         self.settings.set("ai_max_side", self.ai_side.value())
         self.settings.set("thumb_threads", self.threads.value())

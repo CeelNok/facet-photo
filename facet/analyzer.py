@@ -1,16 +1,15 @@
-"""Background AI analysis: one Jev request per photo, all labels asked in that single request."""
+"""Background AI analysis: one request per photo (Jev or OpenAI), all labels asked in that single request."""
 
 from __future__ import annotations
 
 import threading
-import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PySide6.QtCore import QObject, Signal
 
 from facet.i18n import tr
 from facet.imaging import prepare_for_ai
-from facet.jev_client import JevClient, JevError
+from facet.ai import AIError
 from facet.storage import faces_dir
 
 
@@ -21,7 +20,7 @@ class AnalyzeJob(QObject):
     progress = Signal(int, int, int)  # done, total, input tokens so far
     finished = Signal(bool, str)      # cancelled, message
 
-    def __init__(self, client: JevClient, tasks: list[tuple[str, str, str, list]], max_side: int, concurrency: int):
+    def __init__(self, client, tasks: list[tuple[str, str, str, list]], max_side: int, concurrency: int):
         """tasks: (file path, path key, fsig, [Label, ...] still missing for that photo)."""
         super().__init__()
         self.client = client
@@ -54,23 +53,10 @@ class AnalyzeJob(QObject):
         jpeg = prepare_for_ai(path, self.max_side)  # decoded inside the worker: memory bounded by concurrency
         if self._cancel.is_set():
             return None
-        questions: dict[str, dict] = {}
-        extra: dict[str, bytes] = {}
-        for l in labels:
-            refs = []
-            if l.is_person:
-                for name in l.ref_faces():
-                    data = self._face(name)
-                    if data:
-                        ref = f"face-{uuid.uuid4().hex}"
-                        extra[ref] = data
-                        refs.append(ref)
-                if not refs:
-                    continue  # a person without any readable reference face cannot be asked
-            questions[l.id] = l.api_question(refs)
-        if not questions:
+        faces = {l.id: [d for d in (self._face(n) for n in l.ref_faces()) if d] for l in labels if l.is_person}
+        answers, usage = self.client.ask_labels(jpeg, labels, faces)
+        if not answers:
             return key, fsig, {}, 0
-        answers, usage = self.client.ask_image(jpeg, questions, extra)
         values = {l.id: (answers[l.id], l.qhash) for l in labels if l.id in answers}
         return key, fsig, values, int(usage.get("input_tokens", 0) or 0)
 
@@ -90,7 +76,7 @@ class AnalyzeJob(QObject):
                         tokens += used
                         if values:
                             self.result.emit(key, fsig, values)
-                except JevError as e:
+                except AIError as e:
                     errors += 1
                     self.failed.emit(task[1], str(e))
                     if e.fatal:

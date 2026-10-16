@@ -26,7 +26,7 @@ from facet.facespanel import FacesPanel
 from facet.grid import PhotoDelegate, PhotoGrid
 from facet.i18n import tr
 from facet.imaging import HEIF_OK, RAW_OK, crop_face
-from facet.jev_client import JevClient, JevError
+from facet.ai import PROVIDERS, AIError, make_client
 from facet.library import LibraryPanel
 from facet.sidebar import Section, Sidebar
 from facet.models import PhotoFilter, PhotoModel, PhotoRole
@@ -224,7 +224,7 @@ class MainWindow(QMainWindow):
         tb.addAction(self.a_open)
         tb.addSeparator()
         an = QToolButton()
-        an.setText("✦  " + tr("Analyse with Jev"))
+        an.setText("✦  " + tr("Analyse with AI"))
         an.setObjectName("primary")
         an.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         m = QMenu(an)
@@ -335,12 +335,6 @@ class MainWindow(QMainWindow):
         self.a_recursive.changed.connect(lambda: self.subfolders_box.setEnabled(self.a_recursive.isEnabled()))
         for wdg in (self.subfolders_box, self.match, self.type_box, QLabel(tr("Sort by:")), self.sort_box, clear, sel):
             vl.addWidget(wdg)
-        vl.addStretch(1)
-        view_scroll = QScrollArea()
-        view_scroll.setWidget(view)
-        view_scroll.setWidgetResizable(True)
-        view_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        view_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         sb = Sidebar(self.settings)
         sb.add(Section("folders", tr("Folders"), self.library.folders, "+", tr("Add a folder to the library"),
@@ -352,7 +346,7 @@ class MainWindow(QMainWindow):
                        self.add_label, min_open=160), 300)
         sb.add(Section("people", tr("People"), self.people_list, tr("+ Mark a face"),
                        tr("Mark a face on the current photo"), self.mark_face, min_open=120), 180)
-        sb.add(Section("view", tr("View"), view_scroll, min_open=150), 260)
+        sb.add(Section("view", tr("View"), view), 260)
         self.sidebar = sb
 
         holder = QWidget()
@@ -381,7 +375,7 @@ class MainWindow(QMainWindow):
         self.faces_panel.name_jev_requested.connect(lambda k, i: self._name_face_group(k, i, jev=True))
         self.faces_panel.ignore_requested.connect(self._ignore_face_group)
         self.faces_panel.jev_requested.connect(
-            lambda pid: self.find_person_with_jev(next(l for l in self.labels if l.id == pid)))
+            lambda pid: self.find_person_with_ai(next(l for l in self.labels if l.id == pid)))
         self.faces_panel.collapsed_changed.connect(self._faces_collapsed)
         self.faces_panel.scan_requested.connect(lambda: self.start_face_scan(self.visible_photos(), manual=True))
         if not FACES_OK:
@@ -734,8 +728,8 @@ class MainWindow(QMainWindow):
         m.addAction(tr("Remove “{name}” from all photos in view ({n})", name=label.name, n=self.proxy.rowCount()),
                     lambda: self.take_off([label], photos=self.visible_photos(), confirm=True))
         if label.is_person:
-            m.addAction(tr("Also search for {name} with Jev AI (side views, small faces)…", name=label.name),
-                        lambda: self.find_person_with_jev(label))
+            m.addAction(tr("Also search for {name} with AI (side views, small faces)…", name=label.name),
+                        lambda: self.find_person_with_ai(label))
         m.addSeparator()
         m.addAction(tr("Edit…"), lambda: self.edit_label(label))
         here = self._folder_of_view_in(label)
@@ -887,7 +881,7 @@ class MainWindow(QMainWindow):
         person = self._assign_faces_to(dlg.person_name(), [match_id] if match_id is not None else [], [jpeg])
         self.set_manual([photo], person, 1)  # it is certainly on the photo it was marked on
         if dlg.search_now.isChecked():
-            self.find_person_with_jev(person)
+            self.find_person_with_ai(person)
 
     def _detected_face_at(self, photo: Photo, rect: tuple) -> int | None:
         """Id of the locally detected face that best overlaps the marked box (scans the photo if needed)."""
@@ -1075,7 +1069,8 @@ class MainWindow(QMainWindow):
         sel = self.selected_photos()
         self.analyze_photos(sel if len(sel) > 0 else self.visible_photos())
 
-    def analyze_photos(self, photos: list[Photo], force: bool = False, only: list[Label] | None = None) -> None:
+    def analyze_photos(self, photos: list[Photo], force: bool = False, only: list[Label] | None = None,
+                       provider: str | None = None) -> None:
         if self.analyze_job is not None:
             QMessageBox.information(self, tr("Analysis"), tr("An analysis is already running."))
             return
@@ -1086,19 +1081,27 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, tr("Analysis"), tr("Add at least one label first."))
             self.add_label()
             return
-        key = self.settings.api_key()
-        if not key:
-            QMessageBox.information(self, tr("Analysis"), tr("Enter your TypeSafe API key in Settings."))
+        provider = provider or self.settings.get("provider") or "jev"
+        if not self.settings.api_key(provider):
+            QMessageBox.information(self, tr("Analysis"), tr("Enter your {provider} API key in Settings.",
+                                                             provider=PROVIDERS.get(provider, provider)))
             self.open_settings()
-            key = self.settings.api_key()
-            if not key:
+            provider = self.settings.get("provider") or "jev"
+            if not self.settings.api_key(provider):
                 return
+        try:
+            client = make_client(self.settings, provider)
+        except AIError as e:
+            QMessageBox.warning(self, tr("Analysis"), str(e))
+            return
         tasks = []
         for p in photos:
             if only is not None:  # e.g. ask Jev about a person where local face recognition found nothing
                 missing = [l for l in only if not p.has(l) and l.id not in p.manual]
             else:
                 missing = [l for l in self.labels if l.applies(p.path)] if force else p.missing(self.labels)
+            if not client.supports_people:  # OpenAI does not compare faces – people come from local recognition
+                missing = [l for l in missing if not l.is_person]
             if missing:
                 tasks.append((p.path, p.key, p.fsig, missing))
         if not tasks and only is not None:
@@ -1122,17 +1125,12 @@ class MainWindow(QMainWindow):
             people = sum(1 for t in tasks for l in t[3] if l.is_person)
             extra = tr("\nPeople are compared using their reference faces, which adds image tokens.") if people else ""
             ok = QMessageBox.question(
-                self, tr("Analyse with Jev"),
-                tr("Analyse {n} photos ({q} questions, one API call per photo, {px} px images)?",
-                   n=len(tasks), q=q, px=self.settings.get("ai_max_side")) + extra,
+                self, tr("Analyse with AI"),
+                tr("Analyse {n} photos with {provider} ({q} questions, one API call per photo, {px} px images)?",
+                   n=len(tasks), provider=client.name, q=q, px=self.settings.get("ai_max_side")) + extra,
             )
             if ok != QMessageBox.StandardButton.Yes:
                 return
-        try:
-            client = JevClient(key, self.settings.get("model"))
-        except JevError as e:
-            QMessageBox.warning(self, tr("Analysis"), str(e))
-            return
         self.errors = []
         job = AnalyzeJob(client, tasks, self.settings.get("ai_max_side"), self.settings.get("concurrency"))
         job.result.connect(self._on_result)
@@ -1195,6 +1193,27 @@ class MainWindow(QMainWindow):
 
     # ================================================================== automatic faces (local)
 
+    def _confirm_face_scan(self) -> bool:
+        """Face recognition is never perfect – say so once before the first scan."""
+        if self.settings._q.value("faces_warning_ack", "false") in ("true", True):
+            return True
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(tr("Find faces"))
+        box.setText(tr("Facet will look for faces on the photos of this view and group the same person together."))
+        box.setInformativeText(tr(
+            "This runs on your computer and nothing is uploaded.\n\n⚠ The result is not 100% accurate: people can "
+            "be missed, two people can be mixed up, or one person can be split into several groups. Check the "
+            "groups before you sort photos by person."))
+        dont = QCheckBox(tr("Don't show this again"))
+        box.setCheckBox(dont)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+        box.button(QMessageBox.StandardButton.Ok).setText(tr("Find faces"))
+        ok = box.exec() == QMessageBox.StandardButton.Ok
+        if ok and dont.isChecked():
+            self.settings._q.setValue("faces_warning_ack", True)
+        return ok
+
     def start_face_scan(self, photos: list[Photo], manual: bool = False) -> None:
         if not FACES_OK:
             return
@@ -1203,6 +1222,8 @@ class MainWindow(QMainWindow):
         if not tasks:
             if manual:
                 self.faces_panel.set_status(tr("All photos in this view are scanned."))
+            return
+        if manual and not self._confirm_face_scan():
             return
         if self.face_job is not None:
             self.face_job.cancel()
@@ -1310,7 +1331,7 @@ class MainWindow(QMainWindow):
             return
         person = self._assign_faces_to(dlg.person_name(), g["ids"])
         if dlg.search_now.isChecked():
-            self.find_person_with_jev(person)
+            self.find_person_with_ai(person)
 
     def _assign_faces_to(self, name: str, face_ids: list[int], ref_crops: list[bytes] | None = None) -> Label:
         """Give faces a person (new or existing by name) and mark that person on every scanned photo."""
@@ -1349,12 +1370,22 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(tr("{name} found on {n} photos in this view", name=person.name, n=n), 6000)
         return person
 
-    def find_person_with_jev(self, label: Label) -> None:
-        """Local recognition is very reliable for frontal faces; Jev compares the reference faces on the rest."""
+    def find_person_with_ai(self, label: Label) -> None:
+        """Local recognition is very reliable for frontal faces; the AI compares the reference faces on the rest.
+        Only TypeSafe Jev compares faces – OpenAI models do not identify people."""
         if not label.faces:
             QMessageBox.information(self, tr("Analysis"), tr("{name} has no reference face yet.", name=label.name))
             return
-        self.analyze_photos(self.visible_photos(), only=[label])
+        provider = self.settings.get("provider") or "jev"
+        if provider != "jev":
+            if not self.settings.api_key("jev"):
+                QMessageBox.information(
+                    self, tr("Analysis"),
+                    tr("Finding a person by their face needs TypeSafe Jev – OpenAI models do not compare faces. "
+                       "Add a Jev API key in Settings, or rely on the local face recognition."))
+                return
+            provider = "jev"
+        self.analyze_photos(self.visible_photos(), only=[label], provider=provider)
 
     def _ignore_face_group(self, kind: str, ident) -> None:
         if kind == "person":
@@ -1528,7 +1559,8 @@ class MainWindow(QMainWindow):
     def _about(self) -> None:
         QMessageBox.about(
             self, APP_NAME,
-            f"<b>{APP_NAME} {__version__}</b><br>" + tr("AI photo culling and sorting with TypeSafe Jev.") +
+            f"<b>{APP_NAME} {__version__}</b><br>" + tr("AI photo culling and sorting with "
+                                                        "TypeSafe Jev or OpenAI.") +
             "<br><br>" + tr("RAW support: {raw} · HEIC support: {heic}",
                             raw=tr("yes") if RAW_OK else tr("no"), heic=tr("yes") if HEIF_OK else tr("no")),
         )

@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>AI-alapú fotóválogatás és -rendezés fotósoknak – címkék, személyek és mappák pár kattintással.</b><br>
-  Natív asztali alkalmazás macOS-re és Windowsra · a <a href="https://docs.typesafe.ai/introduction">TypeSafe JEV</a> modelljével
+  Natív asztali alkalmazás macOS-re és Windowsra · AI: <a href="https://docs.typesafe.ai/introduction">TypeSafe JEV</a> vagy <a href="https://developers.openai.com/api/docs/guides/images-vision">OpenAI (ChatGPT)</a>
 </p>
 
 <p align="center"><i><a href="README.md">English</a></i></p>
@@ -25,12 +25,13 @@ szereplő embereket**. Utána szűrsz, nagyítasz, javítasz, és mappákba rend
 
 | | |
 |---|---|
-| 🏷 **Címkék** | Öt **beépített címke** mindig, minden mappában ott van: *Elmosódott, Mosolyog valaki, Csukott szem, Túlexponált, Alulexponált*. A **saját címkéid** (**+ Új szűrő**) ahhoz a mappához tartoznak, ahol létrehoztad őket, így egy esküvő „Csók” címkéje nem jelenik meg a nyaralós képeknél. Minden címke egy igen/nem kérdés a JEV-nek; a küszöb utólag, élő előnézettel állítható („12 / 92 kép · legmagasabb pontszám 81%”), újraelemzés nélkül. |
-| 👤 **Személyek** | Az arcokat a Facet **a gépeden** automatikusan megtalálja és csoportosítja. Egy csoportot elnevezel, és onnantól az új képeken is felismeri az illetőt. Oldalnézethez és kis arcokhoz a JEV is kereshet a referenciaarcokkal. |
+| 🏷 **Címkék** | Öt **beépített címke** mindig, minden mappában ott van: *Elmosódott, Mosolyog valaki, Csukott szem, Túlexponált, Alulexponált*. A **saját címkéid** (**+ Új szűrő**) ahhoz a mappához tartoznak, ahol létrehoztad őket, így egy esküvő „Csók” címkéje nem jelenik meg a nyaralós képeknél. Minden címke egy igen/nem kérdés az AI-nak; a küszöb utólag, élő előnézettel állítható („12 / 92 kép · legmagasabb pontszám 81%”), újraelemzés nélkül. |
+| 🤖 **Választható AI** | **TypeSafe JEV** (kalibrált igen/nem valószínűségek, személyeket is keres az arcuk alapján) vagy **OpenAI / ChatGPT** képfelismerő modellek (alapból `gpt-5.4-mini`). A Beállításokban váltható; mindkettő képenként egy API-hívás. |
+| 👤 **Személyek** | Opcionális: az **Arcok keresése** gombbal a Facet **a gépeden** megkeresi és csoportosítja az arcokat. Egy csoportot elnevezel, és onnantól az új képeken is felismeri az illetőt. ⚠ Az arcfelismerés nem 100%-os – ellenőrizd a csoportokat. Oldalnézethez és kis arcokhoz a JEV is kereshet a referenciaarcokkal. |
 | 🔎 **Szűrés és kijelölés** | Címkék és személyek bevonása (✓) vagy kizárása (✕), bármelyik/mindegyik feltétel, elemezetlen, címke nélküli, csak RAW, fájlnév. A találatos címkék vannak felül, és bármely címke valószínűsége szerint rendezhetsz. |
 | 📁 **Rendezés mappákba** | Címkénként vagy személyenként külön almappába, vagy mind egy mappába. Másolhatsz vagy áthelyezhetsz, a kísérő fájlok (`.xmp`, `.aae`, RAW+JPEG pár) is mennek. Minden művelet visszavonható; visszavonáskor a másolatok a Kukába kerülnek. |
 | 🖼 **Nézegető** | Teljes képernyős nézegető zoommal (görgő, csíptetés, 100%), nyilas lapozással, címkekapcsolókkal és arckijelöléssel. A RAW a beágyazott előnézettel nyílik meg, nagyításkor teljes minőségben hívja elő. |
-| 📚 **Könyvtár** | A mappák és a gyűjtemények (több mappán átívelő virtuális albumok) a Lightroomhoz hasonlóan az oldalsávon maradnak, a *Legutóbb megnyitott képekkel* együtt. Az oldalsáv minden része összecsukható és átméretezhető. |
+| 📚 **Könyvtár** | A mappák és a gyűjtemények (több mappán átívelő virtuális albumok) a Lightroomhoz hasonlóan az oldalsávon maradnak, a *Legutóbb megnyitott képekkel* együtt. Az oldalsáv minden része összecsukható, és az egész sáv egyben görgethető. |
 | 🌗 **Modern felület** | Lekerekített, letisztult megjelenés világos és sötét módban (a rendszer szerint), magyarul és angolul. |
 
 ## Indítás
@@ -52,10 +53,18 @@ git clone https://github.com/CeelNok/facet-photo.git
 2. Kattints duplán a **`Facet.bat`**-ra. Az első indítás mindent telepít, és létrehoz egy logós **Facet**
    parancsikont a mappában. Ezt kitűzheted a Startra vagy a tálcára.
 
-### JEV API kulcs
-Kulcsot itt igényelhetsz: <https://console.typesafe.ai/keys>. Utána: **Beállítások → API kulcs → Kapcsolat
-tesztelése**. A kulcs a Facet adatmappájában, egy csak számodra olvasható fájlban tárolódik. A Facet nem használja a
-rendszer kulcstartóját, ezért soha nem kér jelszót.
+### AI-szolgáltató és API kulcs
+**⚙ Beállítások → Elemzéshez használt AI**: válaszd ki a szolgáltatót, add meg a kulcsát, majd **Kapcsolat
+tesztelése**.
+
+| Szolgáltató | Kulcs | Alapmodell | Megjegyzés |
+|---|---|---|---|
+| TypeSafe JEV | <https://console.typesafe.ai/keys> | `jev-latest` | Kalibrált valószínűségek; személyeket is keres a referenciaarcaik alapján. A képkezelés a TypeSafe-nél béta. |
+| OpenAI (ChatGPT) | <https://platform.openai.com/api-keys> | `gpt-5.4-mini` | Responses API szigorú JSON-sémával, `store: false` beállítással. Az OpenAI modellek nem hasonlítanak össze arcokat, így a személyeket csak a helyi arcfelismerés találja meg. Más modellek: `gpt-5.4-nano` (legolcsóbb), `gpt-5.4`, `gpt-5.5` (legpontosabb). |
+
+A kulcsok a Facet adatmappájában, csak számodra olvasható fájlokban tárolódnak (`api_key`, `openai_api_key`). A Facet
+nem használja a rendszer kulcstartóját, ezért soha nem kér jelszót. Szolgáltatóváltáskor a meglévő eredmények
+megmaradnak; az *Újraelemzés* a másik AI-jal futtatja le újra a képeket.
 
 ## Jó címkék írása
 
@@ -68,12 +77,15 @@ rendszer kulcstartóját, ezért soha nem kér jelszót.
 
 ## Személyek
 
-- **Automatikusan:** mappanyitáskor a Facet megkeresi az arcokat, és csoportosítja az azonos személyeket. A
-  csoportok kerek kis képekként jelennek meg a rács alatti **Felismert arcok** sávban. Kattintásra az illető képei
-  látszanak, dupla kattintással elnevezheted.
+- **Arcok keresése (opcionális):** a rács alatti **Arcok keresése** gombbal a Facet megkeresi az arcokat, és
+  csoportosítja az azonos személyeket. A csoportok kerek kis képekként jelennek meg a **Felismert arcok** sávban.
+  Kattintásra az illető képei látszanak, dupla kattintással elnevezheted. Az automatikus keresés mappanyitáskor a
+  Beállításokban kapcsolható be.
+- ⚠ **Nem 100%-os:** kimaradhat valaki, két ember összekeveredhet, vagy egy ember több csoportba kerülhet. Mielőtt
+  személy szerint rendezed a képeket, ellenőrizd a csoportokat.
 - **Kézzel:** a nézegetőben **F**, keret az arc köré, majd név.
-- **Oldalnézet, kis arcok:** jobb klikk a személyen → *Keresés JEV AI-jal is*. A JEV a referenciaarcokkal azokon a
-  képeken keres, ahol a helyi felismerés nem talált.
+- **Oldalnézet, kis arcok:** jobb klikk a személyen → *Keresés AI-jal is*. A TypeSafe JEV a referenciaarcokkal azokon
+  a képeken keres, ahol a helyi felismerés nem talált (JEV kulcs kell hozzá, akkor is, ha az OpenAI a fő szolgáltató).
 - A helyi felismerés (OpenCV YuNet + SFace) ingyenes, semmit nem tölt fel, egy CPU-szálon fut, és a Beállításokban
   kikapcsolható.
 
@@ -91,8 +103,8 @@ rendszer kulcstartóját, ezért soha nem kér jelszót.
 
 ## Adatvédelem, energia, memória
 
-- **Helyben maradnak a képek:** csak JEV-elemzéskor megy ki egy kicsinyített JPEG (alapból 1024 px). Az
-  arcfelismerés soha nem hagyja el a gépet.
+- **Helyben maradnak a képek:** csak AI-elemzéskor megy ki egy kicsinyített JPEG (alapból 1024 px) a választott
+  szolgáltatónak. Az arcfelismerés soha nem hagyja el a gépet.
 - **Takarékos működés:** üresjáratban ~0% CPU. Csak a látható képek töltődnek be. A JPEG DCT-skálázással
   dekódolódik, a RAW-hoz a beágyazott előnézetet használja.
 - **Kötött memória:** a memóriában lévő bélyegkép-gyorsítótár legfeljebb ~96 MB, a nézegető egyszerre legfeljebb

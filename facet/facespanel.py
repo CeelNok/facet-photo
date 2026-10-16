@@ -100,10 +100,15 @@ class FacesPanel(QWidget):
         self.list.itemDoubleClicked.connect(self._double)
         self.list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.list.customContextMenuRequested.connect(self._menu)
-        self.empty = QLabel(tr("No faces yet. Press “Find faces” – or they are found automatically after a folder "
-                               "opens (Settings)."))
+        self.empty = QLabel(tr("No faces yet. Press “Find faces” to look for people on the photos of this view "
+                               "(optional, runs on this computer)."))
         self.empty.setObjectName("muted")
         self.empty.setWordWrap(True)
+        self.warning = QLabel(tr("⚠ Automatic face grouping is not 100% accurate – check the groups before relying "
+                                 "on them."))
+        self.warning.setObjectName("muted")
+        self.warning.setWordWrap(True)
+        lay.addWidget(self.warning)
         lay.addWidget(self.list)
         lay.addWidget(self.empty)
         self.active: tuple[str, object] | None = None
@@ -116,6 +121,7 @@ class FacesPanel(QWidget):
         self.toggle.setText("▸" if on else "▾")
         self.list.setVisible(not on and self._has)
         self.empty.setVisible(not on and not self._has)
+        self.warning.setVisible(not on and self._has)
         head_h = self.toggle.sizeHint().height() + 22
         self.setMaximumHeight(head_h if on else 16777215)
         self.setMinimumHeight(head_h if on else head_h + 60)
@@ -142,6 +148,7 @@ class FacesPanel(QWidget):
         self._has = bool(groups)
         self.list.setVisible(self._has and not self.collapsed)
         self.empty.setVisible(not self._has and not self.collapsed)
+        self.warning.setVisible(self._has and not self.collapsed)
 
     def set_status(self, text: str) -> None:
         self.status.setText(text)
@@ -166,14 +173,14 @@ class FacesPanel(QWidget):
         m.addAction(tr("Show these photos"), lambda: self._clicked(it))
         if kind == "cluster":
             m.addAction(tr("Name this person…"), lambda: self.name_requested.emit(kind, ident))
-            m.addAction(tr("Name and also search with Jev AI (side views, small faces)…"),
+            m.addAction(tr("Name and also search with AI (side views, small faces)…"),
                         lambda: self.name_jev_requested.emit(kind, ident))
             m.addSeparator()
             m.addAction(tr("Ignore (not a person / not interesting)"),
                         lambda: self.ignore_requested.emit(kind, ident))
         else:
             m.addAction(tr("Edit person…"), lambda: self.name_requested.emit(kind, ident))
-            m.addAction(tr("Also search with Jev AI (side views, small faces)…"),
+            m.addAction(tr("Also search with AI (side views, small faces)…"),
                         lambda: self.jev_requested.emit(ident))
             m.addAction(tr("Forget the name (faces become unnamed)"),
                         lambda: self.ignore_requested.emit(kind, ident))

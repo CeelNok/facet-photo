@@ -39,6 +39,7 @@ checks each one against **your own labels** ("blurry", "eyes closed", "the coupl
 | 👤 **People** | Optional: press **Find faces** and Facet finds and groups faces **on your computer**. Give a group a name and Facet recognises that person on new photos too. ⚠ Face recognition is not 100% accurate – check the groups. For side views and small faces Jev can also search with the reference faces. |
 | 🔎 **Filter & select** | Include (✓) or exclude (✕) labels and people, any/all matching, not analysed, no labels, RAW only, file names. Labels with matches come first; you can also sort by any label's probability. |
 | 📁 **Sort into folders** | One subfolder per label or person, or everything into one folder. Copy or move, with companion files (`.xmp`, `.aae`, RAW+JPEG pairs). Every operation can be undone; undone copies go to the Trash. |
+| ✏️ **Batch rename** | Rename many photos at once (**F2**): a name pattern such as `Wedding_{date}_{n}` (tokens: `{name}` `{n}` `{date}` `{time}` `{folder}` `{label}`, numbering in grid order, by capture time or by name) or find & replace (optionally with regular expressions). A live preview shows every old → new name and blocks conflicts. RAW+JPEG pairs share one number, `.xmp`/`.aae` files follow, labels/people/collections stay attached, and **Undo** puts everything back. |
 | 🖼 **Viewer** | Full-screen viewer with zoom (scroll, pinch, 100 %), arrow-key browsing, label toggles and face marking. RAW files open from their embedded preview and are developed at full quality when you zoom in. |
 | 📚 **Library** | Folders and collections (virtual albums across folders) stay in the sidebar, like in Lightroom, together with *Recently opened photos*. Every sidebar section can be folded; the whole sidebar scrolls as one. |
 | 🌗 **Modern UI** | Rounded, clean interface in light and dark mode (follows the system), English and Hungarian. |
@@ -129,7 +130,8 @@ The AI answers a yes/no question per label and returns a probability. A few rule
 | `Cmd/Ctrl + A` | select all visible | – |
 | `Cmd/Ctrl + E` | analyse selection | – |
 | `Cmd/Ctrl + M` | sort into folders | – |
-| `Cmd/Ctrl + Z` | undo sorting | – |
+| `F2` | rename selected photos | – |
+| `Cmd/Ctrl + Z` | undo sorting / renaming | – |
 
 ## Privacy, energy and memory
 
@@ -178,6 +180,7 @@ facet/
   imaging.py          JPEG DCT scaling, RAW, HEIC, AI image prep, face crops
   thumbs.py           thumbnail threads, disk + memory cache
   organizer.py        copy / move, companion files, undo
+  renamer.py          batch rename: patterns, EXIF dates, two-phase rename, undo
   storage.py          settings, labels, SQLite, API key file
   dialogs.py          labels, people, settings, sorting dialogs
   theme.py            light / dark theme

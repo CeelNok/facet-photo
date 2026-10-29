@@ -671,3 +671,191 @@ class OrganizeDialog(QDialog):
 
 __all__ = ["LabelsDialog", "LabelEditDialog", "PersonDialog", "SettingsDialog", "OrganizeDialog", "face_icon",
            "language"]
+
+
+# --------------------------------------------------------------------------- batch rename
+
+
+class RenameDialog(QDialog):
+    """Rename many photos at once: name pattern or find & replace, with a live old → new preview."""
+
+    TOKEN_TIPS = {
+        "{name}": "Original name (without extension)",
+        "{n}": "Running number (start and digits below)",
+        "{date}": "Capture date from EXIF, e.g. 2025-12-24",
+        "{time}": "Capture time from EXIF, e.g. 18-30-05",
+        "{folder}": "Name of the photo's folder",
+        "{label}": "First label on the photo",
+    }
+
+    def __init__(self, photos: list, label_of=None, parent=None) -> None:
+        super().__init__(parent)
+        from PySide6.QtCore import QTimer
+
+        from facet.renamer import RenameConfig
+
+        self.setWindowTitle(tr("Rename photos"))
+        self.resize(820, 680)
+        self.photos = photos
+        self.label_of = label_of
+        self.times: dict = {}
+        self.plan = None
+        self._cfg_cls = RenameConfig
+
+        self.by_pattern = QRadioButton(tr("Name pattern"))
+        self.by_replace = QRadioButton(tr("Find and replace"))
+        self.by_pattern.setChecked(True)
+        g = QButtonGroup(self)
+        g.addButton(self.by_pattern)
+        g.addButton(self.by_replace)
+
+        self.pattern = QLineEdit("{name}")
+        self.pattern.setPlaceholderText(tr("e.g. Wedding_{date}_{n}"))
+        tokens = QHBoxLayout()
+        tokens.setSpacing(4)
+        for tok, tip in self.TOKEN_TIPS.items():
+            b = QPushButton(tok)
+            b.setToolTip(tr(tip))
+            b.clicked.connect(lambda _c=False, t=tok: (self.pattern.insert(t), self.pattern.setFocus()))
+            tokens.addWidget(b)
+        tokens.addStretch(1)
+        self.start = QSpinBox()
+        self.start.setRange(0, 9_999_999)
+        self.start.setValue(1)
+        self.digits = QSpinBox()
+        self.digits.setRange(1, 8)
+        self.digits.setValue(3)
+        self.order = QComboBox()
+        self.order.addItem(tr("Grid order"), "grid")
+        self.order.addItem(tr("Capture time"), "time")
+        self.order.addItem(tr("File name"), "name")
+        num = QHBoxLayout()
+        for lbl, w in ((tr("Start at"), self.start), (tr("Digits"), self.digits), (tr("Number in"), self.order)):
+            num.addWidget(QLabel(lbl))
+            num.addWidget(w)
+        num.addStretch(1)
+        pat_box = QGroupBox()
+        pf = QVBoxLayout(pat_box)
+        pf.addWidget(self.pattern)
+        pf.addLayout(tokens)
+        pf.addLayout(num)
+
+        self.find = QLineEdit()
+        self.find.setPlaceholderText(tr("Find"))
+        self.replace = QLineEdit()
+        self.replace.setPlaceholderText(tr("Replace with"))
+        self.regex = QCheckBox(tr("Regular expression"))
+        self.case = QCheckBox(tr("Match case"))
+        rep_box = QGroupBox()
+        rf = QHBoxLayout(rep_box)
+        for w in (self.find, self.replace, self.regex, self.case):
+            rf.addWidget(w)
+
+        self.lower_ext = QCheckBox(tr("Lowercase extensions (.JPG → .jpg)"))
+        self.companions = QCheckBox(tr("Rename companion files too (.xmp, .aae, RAW+JPEG pairs)"))
+        self.companions.setChecked(True)
+
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels([tr("Current name"), tr("New name"), ""])
+        h = self.table.horizontalHeader()
+        h.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        h.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        h.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.summary = QLabel()
+        self.summary.setWordWrap(True)
+
+        self.bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.bb.button(QDialogButtonBox.StandardButton.Ok).setText(tr("Rename"))
+        self.bb.accepted.connect(self.accept)
+        self.bb.rejected.connect(self.reject)
+
+        lay = QVBoxLayout(self)
+        lay.addWidget(QLabel(tr("{n} photos selected", n=len(photos))))
+        lay.addWidget(self.by_pattern)
+        lay.addWidget(pat_box)
+        lay.addWidget(self.by_replace)
+        lay.addWidget(rep_box)
+        lay.addWidget(self.lower_ext)
+        lay.addWidget(self.companions)
+        lay.addWidget(self.table, 1)
+        lay.addWidget(self.summary)
+        lay.addWidget(self.bb)
+
+        self._timer = QTimer(self, singleShot=True, interval=150, timeout=self.refresh)
+        for w in (self.pattern, self.find, self.replace):
+            w.textChanged.connect(lambda _t: self._timer.start())
+        for w in (self.start, self.digits):
+            w.valueChanged.connect(lambda _v: self._timer.start())
+        self.order.currentIndexChanged.connect(lambda _i: self._timer.start())
+        for w in (self.by_pattern, self.by_replace, self.regex, self.case, self.lower_ext, self.companions):
+            w.toggled.connect(lambda _o: self._timer.start())
+        self.by_pattern.toggled.connect(lambda on: (pat_box.setEnabled(on), rep_box.setEnabled(not on)))
+        rep_box.setEnabled(False)
+        self.refresh()
+
+    def config(self):
+        return self._cfg_cls(
+            mode="pattern" if self.by_pattern.isChecked() else "replace",
+            pattern=self.pattern.text(), start=self.start.value(), digits=self.digits.value(),
+            order=self.order.currentData(), find=self.find.text(), replace=self.replace.text(),
+            regex=self.regex.isChecked(), case_sensitive=self.case.isChecked(),
+            lower_ext=self.lower_ext.isChecked(), companions=self.companions.isChecked())
+
+    def _ensure_times(self, cfg) -> None:
+        uses_time = cfg.mode == "pattern" and any(t in cfg.pattern for t in
+                                                 ("{date}", "{time}", "{year}", "{month}", "{day}"))
+        if (uses_time or cfg.order == "time") and not self.times:
+            from PySide6.QtWidgets import QApplication
+
+            from facet.renamer import capture_time
+
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                self.times = {p.key: capture_time(p.path) for p in self.photos}
+            finally:
+                QApplication.restoreOverrideCursor()
+
+    def refresh(self) -> None:
+        from facet.renamer import build_plan
+
+        cfg = self.config()
+        self._ensure_times(cfg)
+        self.plan = build_plan(self.photos, cfg, self.times, self.label_of)
+        rows = self.plan.rows
+        shown = rows[:3000]
+        self.table.setRowCount(len(shown))
+        warn = QColor("#e5484d")
+        muted = self.palette().color(self.palette().ColorRole.PlaceholderText)
+        for i, r in enumerate(shown):
+            old = QTableWidgetItem(os.path.basename(r.src) + ("" if r.primary else "  " + tr("(companion)")))
+            new = QTableWidgetItem(os.path.basename(r.dst))
+            mark = {"ok": "✓", "same": "–", "conflict": "⚠", "invalid": "⚠"}[r.status]
+            st = QTableWidgetItem(mark)
+            if r.status in ("conflict", "invalid"):
+                for it in (old, new, st):
+                    it.setForeground(warn)
+                st.setToolTip(tr(r.note) if r.note else "")
+            elif r.status == "same" or not r.primary:
+                for it in (old, new):
+                    it.setForeground(muted)
+            self.table.setItem(i, 0, old)
+            self.table.setItem(i, 1, new)
+            self.table.setItem(i, 2, st)
+        ok = self.bb.button(QDialogButtonBox.StandardButton.Ok)
+        if self.plan.error:
+            self.summary.setText(tr("Invalid regular expression: {e}", e=self.plan.error))
+            self.summary.setStyleSheet("color:#e5484d")
+            ok.setEnabled(False)
+            return
+        n_changes, n_problems = len(self.plan.changes), len(self.plan.problems)
+        if n_problems:
+            self.summary.setText(tr("{n} name conflicts – change the pattern so every file gets its own name.",
+                                    n=n_problems))
+            self.summary.setStyleSheet("color:#e5484d")
+        else:
+            self.summary.setText(tr("{n} files will be renamed. You can undo this afterwards.", n=n_changes))
+            self.summary.setStyleSheet("")
+        ok.setEnabled(n_changes > 0 and not n_problems)

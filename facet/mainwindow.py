@@ -18,9 +18,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from facet import APP_NAME, __version__, organizer
+from facet import APP_NAME, __version__, organizer, renamer
 from facet.analyzer import AnalyzeJob
-from facet.dialogs import LabelEditDialog, LabelsDialog, OrganizeDialog, PersonDialog, SettingsDialog, face_icon
+from facet.dialogs import (
+    LabelEditDialog, LabelsDialog, OrganizeDialog, PersonDialog, RenameDialog, SettingsDialog, face_icon,
+)
 from facet.faces import FACES_OK, FaceIndex, FaceScanJob, box_iou
 from facet.facespanel import FacesPanel
 from facet.grid import PhotoDelegate, PhotoGrid
@@ -206,7 +208,10 @@ class MainWindow(QMainWindow):
         self.a_new_label = self._act(tr("New filter / label…"), self.add_label, "Ctrl+Shift+L")
         self.a_mark_face = self._act(tr("Mark a face…"), self.mark_face, "Ctrl+Shift+F")
         self.a_organize = self._act(tr("Sort into folders…"), self.organize, "Ctrl+M")
-        self.a_undo = self._act(tr("Undo sorting"), self.undo_organize, QKeySequence.StandardKey.Undo)
+        self.a_undo = self._act(tr("Undo"), self.undo_organize, QKeySequence.StandardKey.Undo)
+        self.a_undo.setToolTip(tr("Undo the last sorting or renaming"))
+        self.a_rename = self._act(tr("Rename…"), self.rename_photos, "F2",
+                                  tip=tr("Rename the selected photos with a pattern or find & replace"))
         self.a_undo.setEnabled(False)
         self.a_settings = self._act(tr("Settings…"), self.open_settings, QKeySequence.StandardKey.Preferences)
         self.a_select_all = self._act(tr("Select all"), self.grid.selectAll, QKeySequence.StandardKey.SelectAll)
@@ -422,6 +427,7 @@ class MainWindow(QMainWindow):
         k.addAction(self.a_mark_face)
         k.addAction(self.a_labels)
         k.addAction(self.a_organize)
+        k.addAction(self.a_rename)
         h = mb.addMenu(tr("Help"))
         h.addAction(self._act(tr("TypeSafe documentation"), lambda: QDesktopServices.openUrl(
             QUrl("https://docs.typesafe.ai/introduction"))))
@@ -1051,6 +1057,7 @@ class MainWindow(QMainWindow):
             m.addAction(tr("Remove from collection (file is kept)"), lambda: self.remove_from_collection(photos))
         m.addSeparator()
         m.addAction(self.a_organize)
+        m.addAction(self.a_rename)
         m.addAction(tr("Show in file manager"), lambda: self.reveal(photos[0].path))
         m.exec(self.grid.viewport().mapToGlobal(pos))
 
@@ -1621,7 +1628,7 @@ class MainWindow(QMainWindow):
                     self.db.duplicate(path_key(op.src), path_key(op.dst))
         self.db.commit()
         if done:
-            self.last_op = (done, job.move, job.created_dirs)
+            self.last_op = ("organize", done, job.move, job.created_dirs)
             self.a_undo.setEnabled(True)
         n = sum(1 for o in done if o.primary)
         msg = tr("Moved: {n} photos", n=n) if job.move else tr("Copied: {n} photos", n=n)
@@ -1634,10 +1641,86 @@ class MainWindow(QMainWindow):
         if errors:
             self._show_errors(tr("Sorting errors"), errors)
 
+    # ================================================================== batch rename
+
+    def rename_photos(self) -> None:
+        photos = self.selected_photos()
+        if not photos:
+            vis = self.visible_photos()
+            if not vis:
+                return
+            if QMessageBox.question(self, tr("Rename photos"),
+                                    tr("No photos are selected. Rename all {n} photos in the view?", n=len(vis))) \
+                    != QMessageBox.StandardButton.Yes:
+                return
+            photos = vis
+        if self.org_job is not None or self.analyze_job is not None:
+            QMessageBox.information(self, tr("Rename photos"), tr("Wait until the running task has finished."))
+            return
+
+        def label_of(p):
+            return next((l.name for l in self.labels if p.has(l)), "")
+
+        dlg = RenameDialog(photos, label_of, self)
+        if not dlg.exec() or dlg.plan is None:
+            return
+        done, err = renamer.execute(dlg.plan)
+        if err:
+            QMessageBox.warning(self, tr("Rename photos"),
+                                tr("Renaming failed, nothing was changed:\n{e}", e=err))
+            return
+        self._db_move_keys(done)
+        self.last_op = ("rename", done)
+        self.a_undo.setEnabled(True)
+        primaries = {r.src for r in dlg.plan.changes if r.primary}
+        new_keys = {path_key(d) for s, d in done if s in primaries}
+        n = len(new_keys)
+        self.statusBar().showMessage(tr("Renamed: {n} photos ({m} files). Undo: Cmd/Ctrl+Z", n=n, m=len(done)), 10000)
+        self._reload_selecting(new_keys)
+
+    def _db_move_keys(self, pairs: list[tuple[str, str]]) -> None:
+        """Labels, faces, collections and history follow renamed files (two-phase, so swaps lose nothing)."""
+        temp = [(path_key(s), f"~facet-tmp~{i}", d) for i, (s, d) in enumerate(pairs)]
+        for key, tmp, _d in temp:
+            self.db.rename(key, tmp, tmp)
+        for _key, tmp, d in temp:
+            self.db.rename(tmp, path_key(d), d)
+        self.db.commit()
+
+    def _reload_selecting(self, keys: set[str]) -> None:
+        def select():
+            self._relay.done.disconnect(after)
+            self._select_keys(keys)
+            sel = self.grid.selectionModel().selectedIndexes()
+            if sel:
+                self.grid.scrollTo(sel[0])
+
+        def after(*_a):
+            QTimer.singleShot(0, select)
+
+        self._relay.done.connect(after)
+        self.grid.clearSelection()
+        self.reload()
+
     def undo_organize(self) -> None:
         if not self.last_op or self.org_job is not None:
             return
-        done, moved, created = self.last_op
+        if self.last_op[0] == "rename":
+            done = self.last_op[1]
+            if QMessageBox.question(self, tr("Undo"), tr("Give {n} files their previous names back?", n=len(done))) \
+                    != QMessageBox.StandardButton.Yes:
+                return
+            err = renamer.undo(done)
+            if err:
+                self._show_errors(tr("Undo errors"), [err])
+                return
+            self._db_move_keys([(d, s) for s, d in done])
+            self.last_op = None
+            self.a_undo.setEnabled(False)
+            self._reload_selecting({path_key(s) for s, _d in done})
+            self.statusBar().showMessage(tr("Undone."), 5000)
+            return
+        _kind, done, moved, created = self.last_op
         n = sum(1 for o in done if o.primary)
         text = (tr("Move {n} photos back to where they were?", n=n) if moved else
                 tr("The {n} copies that were made will go to the Trash. Continue?", n=len(done)))

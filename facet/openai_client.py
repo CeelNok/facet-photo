@@ -42,7 +42,7 @@ class OpenAIClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
-            "User-Agent": "Facet/0.5",
+            "User-Agent": "Facet/0.6",
         }
 
     def ask_labels(self, jpeg: bytes, labels: list, faces: dict[str, list[bytes]]) -> tuple[dict[str, float], dict]:

@@ -80,7 +80,7 @@ class JevClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": content_type,
             "Accept": "application/json",
-            "User-Agent": "Facet/0.5",
+            "User-Agent": "Facet/0.6",
         }
         if images:
             headers["TypeSafe-Danger-Zone-Images"] = "true"

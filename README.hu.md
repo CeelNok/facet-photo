@@ -30,6 +30,7 @@ szereplő embereket**. Utána szűrsz, nagyítasz, javítasz, és mappákba rend
 | 👤 **Személyek** | Opcionális: az **Arcok keresése** gombbal a Facet **a gépeden** megkeresi és csoportosítja az arcokat. Egy csoportot elnevezel, és onnantól az új képeken is felismeri az illetőt. ⚠ Az arcfelismerés nem 100%-os – ellenőrizd a csoportokat. Oldalnézethez és kis arcokhoz a JEV is kereshet a referenciaarcokkal. |
 | 🔎 **Szűrés és kijelölés** | Címkék és személyek bevonása (✓) vagy kizárása (✕), bármelyik/mindegyik feltétel, elemezetlen, címke nélküli, csak RAW, fájlnév. A találatos címkék vannak felül, és bármely címke valószínűsége szerint rendezhetsz. |
 | 📁 **Rendezés mappákba** | Címkénként vagy személyenként külön almappába, vagy mind egy mappába. Másolhatsz vagy áthelyezhetsz, a kísérő fájlok (`.xmp`, `.aae`, RAW+JPEG pár) is mennek. Minden művelet visszavonható; visszavonáskor a másolatok a Kukába kerülnek. |
+| ✏️ **Kötegelt átnevezés** | Több kép átnevezése egyszerre (**F2**): névminta, pl. `Eskuvo_{date}_{n}` (elemek: `{name}` `{n}` `{date}` `{time}` `{folder}` `{label}`; számozás a rács sorrendjében, készítési idő vagy név szerint), vagy keresés és csere (akár reguláris kifejezéssel). Élő előnézet mutat minden régi → új nevet, ütközésnél nem enged tovább. A RAW+JPEG pár közös sorszámot kap, az `.xmp`/`.aae` fájlok követik, a címkék, személyek és gyűjtemények a képen maradnak, a **Visszavonás** pedig mindent visszaállít. |
 | 🖼 **Nézegető** | Teljes képernyős nézegető zoommal (görgő, csíptetés, 100%), nyilas lapozással, címkekapcsolókkal és arckijelöléssel. A RAW a beágyazott előnézettel nyílik meg, nagyításkor teljes minőségben hívja elő. |
 | 📚 **Könyvtár** | A mappák és a gyűjtemények (több mappán átívelő virtuális albumok) a Lightroomhoz hasonlóan az oldalsávon maradnak, a *Legutóbb megnyitott képekkel* együtt. Az oldalsáv minden része összecsukható, és az egész sáv egyben görgethető. |
 | 🌗 **Modern felület** | Lekerekített, letisztult megjelenés világos és sötét módban (a rendszer szerint), magyarul és angolul. |
@@ -100,6 +101,7 @@ megmaradnak; az *Újraelemzés* a másik AI-jal futtatja le újra a képeket.
 | `Z` / dupla katt | – | 100% ↔ illesztés |
 | `F` | – | arc kijelölése |
 | `Cmd/Ctrl + A` / `E` / `M` / `Z` | mind kijelölése / elemzés / rendezés / visszavonás | – |
+| `F2` | kijelölt képek átnevezése | – |
 
 ## Adatvédelem, energia, memória
 
